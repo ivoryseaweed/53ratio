@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>5:3 Layout Tool</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f4f0; --surface: #fff; --border: rgba(0,0,0,0.12);
+      --border-strong: rgba(0,0,0,0.2); --text: #1a1a1a; --text-muted: #888;
+      --text-hint: #bbb; --accent: #1a1a1a; --radius-sm: 6px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141414; --surface: #1e1e1e; --border: rgba(255,255,255,0.1);
+        --border-strong: rgba(255,255,255,0.2); --text: #f0f0f0;
+        --text-muted: #888; --text-hint: #555; --accent: #f0f0f0;
+      }
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 1.5rem; }
+    .container { width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 14px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; }
+    header h1 { font-size: 15px; font-weight: 500; letter-spacing: 0.02em; }
+    header span { font-size: 12px; color: var(--text-muted); }
+
+    .canvas-area {
+      width: 100%; aspect-ratio: 10/3;
+      display: grid; grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--border-strong); overflow: hidden; background: var(--surface);
+    }
+    .slot {
+      position: relative; display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: var(--surface); cursor: crosshair;
+      touch-action: none;
+    }
+    .slot:first-child { border-right: 1px solid var(--border-strong); }
+    .slot-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .placeholder {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      pointer-events: none; z-index: 2; position: relative;
+    }
+    .placeholder svg { width: 28px; height: 28px; stroke: var(--text-hint); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .placeholder p { font-size: 12px; color: var(--text-hint); letter-spacing: 0.02em; }
+    .slot-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.38);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.15s; z-index: 3; pointer-events: none;
+    }
+    .slot:hover .slot-overlay { opacity: 1; }
+    .slot-overlay span { font-size: 11px; color: #fff; border: 1px solid rgba(255,255,255,0.55); padding: 4px 12px; border-radius: 20px; }
+
+    /* Controls below each slot */
+    .slot-controls { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; }
+    .ctrl-btn {
+      font-size: 11px; color: var(--text-muted); background: none;
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 3px 10px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+      transition: background 0.1s, color 0.1s;
+    }
+    .ctrl-btn:hover { background: var(--border); color: var(--text); }
+
+    /* Color panel */
+    .color-panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; display: none; flex-direction: column; gap: 10px;
+    }
+    .color-panel.visible { display: flex; }
+    .color-panel-title { font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; }
+    .color-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+    .swatch {
+      width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+      border: 2px solid transparent; transition: transform 0.1s, border-color 0.1s;
+      flex-shrink: 0;
+    }
+    .swatch:hover { transform: scale(1.12); }
+    .swatch.selected { border-color: var(--text); }
+    .color-custom { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+    .color-custom label { font-size: 11px; color: var(--text-muted); }
+    .color-custom input[type=color] { width: 36px; height: 28px; border: 1px solid var(--border); border-radius: 4px; background: none; cursor: pointer; padding: 2px; }
+
+    /* Bottom actions */
+    .actions { display: flex; align-items: center; justify-content: space-between; }
+    .left-actions { display: flex; align-items: center; gap: 8px; }
+    .badge { font-size: 11px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; }
+    .btn-clear { font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm); transition: color 0.15s, background 0.15s; }
+    .btn-clear:hover { color: var(--text); background: var(--border); }
+    .btn-download {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      color: var(--bg); background: var(--accent); border: none;
+      border-radius: var(--radius-sm); padding: 9px 20px; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-download:hover { opacity: 0.85; }
+    .btn-download:active { transform: scale(0.98); }
+    .btn-download:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+    .btn-download svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    input[type=file] { display: none; }
+    footer { font-size: 11px; color: var(--text-hint); text-align: center; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>5 : 3 Layout Tool</h1>
+    <span>드래그·핀치로 조정 · PNG 출력</span>
+  </header>
+
+  <div class="canvas-area">
+    <div class="slot" id="slot-left" onclick="handleSlotClick('left')">
+      <canvas class="slot-canvas" id="canvas-left"></canvas>
+      <div class="placeholder" id="ph-left">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <p>클릭하여 이미지 업로드</p>
+      </div>
+      <div class="slot-overlay"><span>이미지 교체</span></div>
+    </div>
+    <div class="slot" id="slot-right" onclick="handleSlotClick('right')">
+      <canvas class="slot-canvas" id="canvas-right"></canvas>
+      <div class="placeholder" id="ph-right">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <p>클릭하여 이미지 업로드</p>
+      </div>
+      <div class="slot-overlay"><span>이미지 교체</span></div>
+    </div>
+  </div>
+
+  <!-- Per-slot controls -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+    <div class="slot-controls" id="ctrl-left">
+      <button class="ctrl-btn" onclick="rotate('left', -90)">↺ 90°</button>
+      <button class="ctrl-btn" onclick="rotate('left', 90)">↻ 90°</button>
+      <button class="ctrl-btn" onclick="resetTransform('left')">리셋</button>
+    </div>
+    <div class="slot-controls" id="ctrl-right">
+      <button class="ctrl-btn" onclick="rotate('right', -90)">↺ 90°</button>
+      <button class="ctrl-btn" onclick="rotate('right', 90)">↻ 90°</button>
+      <button class="ctrl-btn" onclick="resetTransform('right')">리셋</button>
+    </div>
+  </div>
+
+  <!-- Color panel (shown when only one image uploaded) -->
+  <div class="color-panel" id="color-panel">
+    <div class="color-panel-title">빈 슬롯 배경색 — 사진에서 추출한 뮤트/파스텔 팔레트</div>
+    <div class="color-swatches" id="color-swatches"></div>
+    <div class="color-custom">
+      <label>직접 선택</label>
+      <input type="color" id="custom-color" value="#e8e0d8" oninput="setCustomColor(this.value)" />
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="left-actions">
+      <span class="badge">1179 × 707 px</span>
+      <button class="btn-clear" onclick="clearAll()">초기화</button>
+    </div>
+    <button class="btn-download" id="btn-dl" onclick="downloadImage()" disabled>
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      PNG 다운로드
+    </button>
+  </div>
+
+  <footer>이미지는 브라우저 내에서만 처리됩니다</footer>
+</div>
+
+<input type="file" id="inp-left" accept="image/*" onchange="loadImage(event,'left')">
+<input type="file" id="inp-right" accept="image/*" onchange="loadImage(event,'right')">
+
+<script>
+// ── State ──────────────────────────────────────────────
+const state = {
+  left:  { img: null, x: 0, y: 0, scale: 1, rotation: 0 },
+  right: { img: null, x: 0, y: 0, scale: 1, rotation: 0 },
+  bgColor: '#e8e0d8',
+  colorSide: null  // which side has the color fill
+};
+
+// ── Slot click (upload trigger) ────────────────────────
+function handleSlotClick(side) {
+  // Only trigger file picker if clicking the placeholder area (no image)
+  if (!state[side].img) {
+    document.getElementById('inp-' + side).click();
+  }
+}
+
+// ── Load image ─────────────────────────────────────────
+function loadImage(e, side) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      state[side].img = img;
+      state[side].x = 0; state[side].y = 0;
+      state[side].scale = 1; state[side].rotation = 0;
+      document.getElementById('ph-' + side).style.display = 'none';
+      setupInteraction(side);
+      renderSlot(side);
+      updateUI();
+      // Extract colors from the uploaded image
+      extractColors(img);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+// ── Render slot to its canvas ──────────────────────────
+function renderSlot(side) {
+  const cvs = document.getElementById('canvas-' + side);
+  const slot = document.getElementById('slot-' + side);
+  cvs.width = slot.clientWidth;
+  cvs.height = slot.clientHeight;
+  const ctx = cvs.getContext('2d');
+  const { img, x, y, scale, rotation } = state[side];
+  const w = cvs.width, h = cvs.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  if (!img) {
+    // Fill with bg color if this is the color side
+    if (state.colorSide === side) {
+      ctx.fillStyle = state.bgColor;
+      ctx.fillRect(0, 0, w, h);
+    }
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(w / 2 + x, h / 2 + y);
+  ctx.rotate(rotation * Math.PI / 180);
+
+  // Cover-fit scale base
+  const rad = rotation * Math.PI / 180;
+  const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+  const rw = w * cos + h * sin, rh = w * sin + h * cos;
+  const baseScale = Math.max(rw / img.naturalWidth, rh / img.naturalHeight);
+  const s = baseScale * scale;
+
+  ctx.drawImage(img, -img.naturalWidth / 2 * s, -img.naturalHeight / 2 * s,
+    img.naturalWidth * s, img.naturalHeight * s);
+  ctx.restore();
+}
+
+function renderBoth() { renderSlot('left'); renderSlot('right'); }
+
+// ── Interaction: drag + pinch ──────────────────────────
+function setupInteraction(side) {
+  const el = document.getElementById('slot-' + side);
+  // Remove old listeners by cloning
+  const fresh = el.cloneNode(true);
+  el.parentNode.replaceChild(fresh, el);
+  const slot = document.getElementById('slot-' + side);
+
+  // Re-attach canvas and placeholder refs
+  slot.querySelector('.slot-overlay');
+
+  let dragging = false, lastX = 0, lastY = 0;
+  let pinching = false, lastDist = 0;
+
+  // Mouse drag
+  slot.addEventListener('mousedown', e => {
+    if (!state[side].img) { document.getElementById('inp-' + side).click(); return; }
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    state[side].x += e.clientX - lastX;
+    state[side].y += e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    renderSlot(side);
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+
+  // Mouse wheel zoom
+  slot.addEventListener('wheel', e => {
+    if (!state[side].img) return;
+    e.preventDefault();
+    state[side].scale = Math.max(0.2, Math.min(10, state[side].scale * (e.deltaY < 0 ? 1.08 : 0.93)));
+    renderSlot(side);
+  }, { passive: false });
+
+  // Touch drag + pinch
+  slot.addEventListener('touchstart', e => {
+    if (!state[side].img) { document.getElementById('inp-' + side).click(); return; }
+    if (e.touches.length === 1) {
+      dragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      pinching = true; dragging = false;
+      lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY);
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  slot.addEventListener('touchmove', e => {
+    if (e.touches.length === 1 && dragging) {
+      state[side].x += e.touches[0].clientX - lastX;
+      state[side].y += e.touches[0].clientY - lastY;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      renderSlot(side);
+    } else if (e.touches.length === 2 && pinching) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY);
+      state[side].scale = Math.max(0.2, Math.min(10, state[side].scale * (dist / lastDist)));
+      lastDist = dist;
+      renderSlot(side);
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  slot.addEventListener('touchend', () => { dragging = false; pinching = false; });
+}
+
+// ── Rotate ─────────────────────────────────────────────
+function rotate(side, deg) {
+  state[side].rotation = (state[side].rotation + deg + 360) % 360;
+  renderSlot(side);
+}
+
+function resetTransform(side) {
+  state[side].x = 0; state[side].y = 0;
+  state[side].scale = 1; state[side].rotation = 0;
+  renderSlot(side);
+}
+
+// ── Color extraction ───────────────────────────────────
+function extractColors(img) {
+  const cvs = document.createElement('canvas');
+  cvs.width = 80; cvs.height = 24;
+  const ctx = cvs.getContext('2d');
+  ctx.drawImage(img, 0, 0, 80, 24);
+  const data = ctx.getImageData(0, 0, 80, 24).data;
+
+  // Sample pixels and cluster into palette
+  const pixels = [];
+  for (let i = 0; i < data.length; i += 16) {
+    pixels.push([data[i], data[i+1], data[i+2]]);
+  }
+
+  // Generate muted/pastel variants
+  const palette = [];
+  const seen = new Set();
+  for (const [r, g, b] of pixels) {
+    // Desaturate + lighten for muted pastel
+    const variants = [
+      mutedColor(r, g, b, 0.35, 220),  // soft pastel
+      mutedColor(r, g, b, 0.45, 200),  // pastel
+      mutedColor(r, g, b, 0.55, 170),  // muted
+      mutedColor(r, g, b, 0.65, 145),  // deeper muted
+    ];
+    for (const hex of variants) {
+      if (!seen.has(hex)) { seen.add(hex); palette.push(hex); }
+      if (palette.length >= 20) break;
+    }
+    if (palette.length >= 20) break;
+  }
+
+  // Pick 8 most visually distinct
+  const picked = pickDistinct(palette, 8);
+  renderSwatches(picked);
+}
+
+function mutedColor(r, g, b, sat, light) {
+  // Convert to HSL, desaturate and set lightness
+  let R = r/255, G = g/255, B = b/255;
+  const max = Math.max(R,G,B), min = Math.min(R,G,B);
+  let h, s, l = (max+min)/2;
+  if (max===min) { h=s=0; }
+  else {
+    const d = max-min;
+    s = l>0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max) {
+      case R: h=((G-B)/d+(G<B?6:0))/6; break;
+      case G: h=((B-R)/d+2)/6; break;
+      default: h=((R-G)/d+4)/6;
+    }
+  }
+  // Apply muted pastel
+  s = s * sat;
+  l = light / 255;
+  return hslToHex(h, s, l);
+}
+
+function hslToHex(h, s, l) {
+  let r,g,b;
+  if (s===0) { r=g=b=l; }
+  else {
+    const q = l<0.5 ? l*(1+s) : l+s-l*s, p=2*l-q;
+    r = hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3);
+  }
+  return '#'+[r,g,b].map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join('');
+}
+
+function hue2rgb(p,q,t) {
+  if(t<0)t+=1; if(t>1)t-=1;
+  if(t<1/6)return p+(q-p)*6*t;
+  if(t<1/2)return q;
+  if(t<2/3)return p+(q-p)*(2/3-t)*6;
+  return p;
+}
+
+function pickDistinct(palette, n) {
+  const picked = [palette[0]];
+  for (const c of palette) {
+    if (picked.length >= n) break;
+    const diffs = picked.map(p => colorDist(c, p));
+    if (Math.min(...diffs) > 18) picked.push(c);
+  }
+  while (picked.length < n && picked.length < palette.length) picked.push(palette[picked.length]);
+  return picked;
+}
+
+function colorDist(a, b) {
+  const ar=parseInt(a.slice(1,3),16), ag=parseInt(a.slice(3,5),16), ab=parseInt(a.slice(5,7),16);
+  const br=parseInt(b.slice(1,3),16), bg=parseInt(b.slice(3,5),16), bb=parseInt(b.slice(5,7),16);
+  return Math.sqrt((ar-br)**2+(ag-bg)**2+(ab-bb)**2);
+}
+
+function renderSwatches(colors) {
+  const container = document.getElementById('color-swatches');
+  container.innerHTML = '';
+  colors.forEach((hex, i) => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (i===0?' selected':'');
+    s.style.background = hex;
+    s.title = hex;
+    s.onclick = () => {
+      document.querySelectorAll('.swatch').forEach(x => x.classList.remove('selected'));
+      s.classList.add('selected');
+      applyBgColor(hex);
+    };
+    container.appendChild(s);
+  });
+  if (colors.length) applyBgColor(colors[0]);
+}
+
+function applyBgColor(hex) {
+  state.bgColor = hex;
+  document.getElementById('custom-color').value = hex;
+  renderSlot(state.colorSide);
+}
+
+function setCustomColor(hex) {
+  state.bgColor = hex;
+  document.querySelectorAll('.swatch').forEach(x => x.classList.remove('selected'));
+  renderSlot(state.colorSide);
+}
+
+// ── UI state ───────────────────────────────────────────
+function updateUI() {
+  const hasL = !!state.left.img, hasR = !!state.right.img;
+  const panel = document.getElementById('color-panel');
+
+  if (hasL && !hasR) {
+    state.colorSide = 'right';
+    panel.classList.add('visible');
+  } else if (!hasL && hasR) {
+    state.colorSide = 'left';
+    panel.classList.add('visible');
+  } else {
+    state.colorSide = null;
+    panel.classList.remove('visible');
+  }
+
+  document.getElementById('btn-dl').disabled = !(hasL || hasR);
+  renderBoth();
+}
+
+// ── Clear ──────────────────────────────────────────────
+function clearAll() {
+  ['left','right'].forEach(side => {
+    state[side] = { img: null, x: 0, y: 0, scale: 1, rotation: 0 };
+    document.getElementById('ph-' + side).style.display = '';
+    const cvs = document.getElementById('canvas-' + side);
+    const ctx = cvs.getContext('2d');
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+  });
+  state.colorSide = null;
+  document.getElementById('color-panel').classList.remove('visible');
+  document.getElementById('btn-dl').disabled = true;
+}
+
+// ── Download ───────────────────────────────────────────
+function drawCoverToCanvas(ctx, img, transform, x, y, w, h) {
+  const { scale, rotation, tx, ty } = transform;
+  ctx.save();
+  ctx.translate(x + w/2 + tx, y + h/2 + ty);
+  ctx.rotate(rotation * Math.PI / 180);
+  const rad = rotation * Math.PI / 180;
+  const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+  const rw = w*cos + h*sin, rh = w*sin + h*cos;
+  const baseScale = Math.max(rw / img.naturalWidth, rh / img.naturalHeight);
+  const s = baseScale * scale;
+  ctx.drawImage(img, -img.naturalWidth/2*s, -img.naturalHeight/2*s, img.naturalWidth*s, img.naturalHeight*s);
+  ctx.restore();
+}
+
+function getPixelTransform(side) {
+  const cvs = document.getElementById('canvas-' + side);
+  const { x, y, scale, rotation } = state[side];
+  const slotW = cvs.width, slotH = cvs.height;
+  const outH = 707, outW = 1179, halfOutW = Math.floor(outW/2);
+  const scaleX = halfOutW / slotW, scaleY = outH / slotH;
+  return {
+    scale, rotation,
+    tx: x * scaleX,
+    ty: y * scaleY
+  };
+}
+
+function downloadImage() {
+  const TARGET_W = 1179, TARGET_H = 707;
+  const halfW = Math.floor(TARGET_W / 2);
+  const cvs = document.createElement('canvas');
+  cvs.width = TARGET_W; cvs.height = TARGET_H;
+  const ctx = cvs.getContext('2d');
+
+  // Left
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, halfW, TARGET_H); ctx.clip();
+  if (state.left.img) {
+    drawCoverToCanvas(ctx, state.left.img, getPixelTransform('left'), 0, 0, halfW, TARGET_H);
+  } else if (state.colorSide === 'left') {
+    ctx.fillStyle = state.bgColor; ctx.fillRect(0, 0, halfW, TARGET_H);
+  }
+  ctx.restore();
+
+  // Right
+  ctx.save();
+  ctx.beginPath(); ctx.rect(halfW, 0, halfW, TARGET_H); ctx.clip();
+  if (state.right.img) {
+    drawCoverToCanvas(ctx, state.right.img, getPixelTransform('right'), halfW, 0, halfW, TARGET_H);
+  } else if (state.colorSide === 'right') {
+    ctx.fillStyle = state.bgColor; ctx.fillRect(halfW, 0, halfW, TARGET_H);
+  }
+  ctx.restore();
+
+  const a = document.createElement('a');
+  a.download = 'layout_5x3.png';
+  a.href = cvs.toDataURL('image/png');
+  a.click();
+}
+
+// ── Resize canvases on window resize ──────────────────
+window.addEventListener('resize', () => {
+  renderSlot('left'); renderSlot('right');
+});
+</script>
+</body>
+</html>
